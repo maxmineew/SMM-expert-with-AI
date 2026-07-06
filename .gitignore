@@ -1,0 +1,19 @@
+# Secrets
+config.py
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Flask / SQLite
+instance/
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
