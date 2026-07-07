@@ -1,11 +1,12 @@
 from flask import Blueprint, render_template, request, flash, session, redirect, url_for
+from generators.gigachat_client import GigaChatAuthError, GigaChatError
 from app.models import User
 from app import db
 from generators.text_gen import PostGenerator
 from generators.image_gen import ImageGenerator
-from social_publishers.vk_publisher import VKPublisher
+from social_publishers.vk_publisher import VKPublisher, VKGroupAuthError, VKPublisherError
 from social_stats.vk_stats import VKStats
-from config import openai_key
+from config import vk_api_key as default_vk_api_key, vk_group_id as default_vk_group_id
 
 
 smm_bp = Blueprint('smm', __name__)
@@ -46,22 +47,59 @@ def post_generator():
         auto_post = 'auto_post' in request.form
 
         user = User.query.get(session['user_id'])
+        vk_token = user.vk_api_id or default_vk_api_key
+        vk_group = user.vk_group_id or default_vk_group_id
 
-        post_gen = PostGenerator(openai_key, tone, topic)
-        post_content = post_gen.generate_post()
+        try:
+            post_gen = PostGenerator(tone, topic)
+            post_content = post_gen.generate_post()
 
-        image_url = None
-        if generate_image:
-            image_gen = ImageGenerator(openai_key)
-            image_prompt = post_gen.generate_post_image_description()
-            image_url = image_gen.generate_image(image_prompt)
+            image_url = None
+            if generate_image:
+                image_gen = ImageGenerator()
+                image_prompt = post_gen.generate_post_image_description()
+                image_url = image_gen.generate_image(image_prompt)
 
-        if auto_post:
-            vk_publisher = VKPublisher(user.vk_api_id, user.vk_group_id)
-            vk_publisher.publish_post(post_content, image_url)
-            flash('Post published to VK successfully!', 'success')
+            if auto_post:
+                if not vk_token or not vk_group:
+                    flash('Укажите VK API ID и VK Group ID в Settings.', 'danger')
+                    return render_template(
+                        'post_generator.html',
+                        post_content=post_content,
+                        image_url=image_url,
+                    )
 
-        return render_template('post_generator.html', post_content=post_content, image_url=image_url)
+                vk_publisher = VKPublisher(vk_token, vk_group)
+                vk_image_url = image_url
+                if image_url and image_url.startswith('/'):
+                    vk_image_url = request.host_url.rstrip('/') + image_url
+
+                try:
+                    vk_publisher.publish_post(post_content, vk_image_url)
+                    flash('Post published to VK successfully!', 'success')
+                except VKGroupAuthError:
+                    if vk_image_url:
+                        vk_publisher.publish_post(post_content, None)
+                        flash(
+                            'Пост опубликован без фото. Ключ сообщества не поддерживает загрузку '
+                            'изображений — для автопоста с фото нужен пользовательский токен '
+                            '(получите по ссылке Kate Mobile из инструкции).',
+                            'warning',
+                        )
+                    else:
+                        raise
+
+            return render_template('post_generator.html', post_content=post_content, image_url=image_url)
+        except GigaChatAuthError:
+            flash('Ошибка авторизации GigaChat. Проверьте gigachat_credentials в config.py.', 'danger')
+        except GigaChatError as exc:
+            flash(f'Ошибка GigaChat: {exc}', 'danger')
+        except VKGroupAuthError as exc:
+            flash(str(exc), 'danger')
+        except VKPublisherError as exc:
+            flash(f'Ошибка VK: {exc}', 'danger')
+        except Exception as exc:
+            flash(f'Не удалось сгенерировать контент: {exc}', 'danger')
 
     return render_template('post_generator.html')
 

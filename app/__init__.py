@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -5,10 +7,12 @@ from flask_bcrypt import Bcrypt
 db = SQLAlchemy()
 bcrypt = Bcrypt()
 
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 
 def create_app():
-    app = Flask(__name__)
-    app.config['SECRET_KEY'] = 'your_secret_key'
+    app = Flask(__name__, static_folder=os.path.join(BASE_DIR, 'static'))
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-me-in-production')
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 
     db.init_app(app)

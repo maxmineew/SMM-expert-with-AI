@@ -12,6 +12,8 @@ env/
 # Flask / SQLite
 instance/
 *.db
+static/generated/*
+!static/generated/.gitkeep
 
 # IDE
 .idea/
